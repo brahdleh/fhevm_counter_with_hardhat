@@ -3,15 +3,21 @@ pragma solidity ^0.8.24;
 
 import "fhevm/lib/TFHE.sol";
 import "fhevm/config/ZamaFHEVMConfig.sol";
+import "fhevm/config/ZamaGatewayConfig.sol";
+import "fhevm/gateway/GatewayCaller.sol";
 
-/// @title EncryptedCounter2
-/// @notice A contract that maintains an encrypted counter and is meant for demonstrating how to add encrypted types
-/// @dev Uses TFHE library for fully homomorphic encryption operations
-/// @custom:experimental This contract is experimental and uses FHE technology
-contract EncryptedCounter2 is SepoliaZamaFHEVMConfig {
+/// @title EncryptedCounter3
+/// @notice A contract that maintains an encrypted counter and is meant for demonstrating how decryption works
+/// @dev Uses TFHE library for fully homomorphic encryption operations and Gateway for decryption
+/// @custom:experimental This contract is experimental and uses FHE technology with decryption capabilities
+contract EncryptedCounter3 is SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
+    /// @dev Decrypted state variable
     euint8 internal counter;
+    uint8 public decryptedCounter;
 
     constructor() {
+        //Gateway.setGateway(Gateway.defaultGatewayAddress()); Commented out due to errors?
+
         // Initialize counter with an encrypted zero value
         counter = TFHE.asEuint8(0);
         TFHE.allowThis(counter);
@@ -22,5 +28,26 @@ contract EncryptedCounter2 is SepoliaZamaFHEVMConfig {
         euint8 incrementAmount = TFHE.asEuint8(amount, inputProof);
         counter = TFHE.add(counter, incrementAmount);
         TFHE.allowThis(counter);
+    }
+
+    /// @notice Request decryption of the counter value
+    function requestDecryptCounter() public {
+        uint256[] memory cts = new uint256[](1);
+        cts[0] = Gateway.toUint256(counter);
+        Gateway.requestDecryption(cts, this.callbackCounter.selector, 0, block.timestamp + 100, false);
+    }
+
+    /// @notice Callback function for counter decryption
+    /// @param decryptedInput The decrypted counter value
+    /// @return The decrypted value
+    function callbackCounter(uint256, uint8 decryptedInput) public onlyGateway returns (uint8) {
+        decryptedCounter = decryptedInput;
+        return decryptedInput;
+    }
+
+    /// @notice Get the decrypted counter value
+    /// @return The decrypted counter value
+    function getDecryptedCounter() public view returns (uint8) {
+        return decryptedCounter;
     }
 }

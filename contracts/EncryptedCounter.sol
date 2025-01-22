@@ -2,52 +2,32 @@
 pragma solidity ^0.8.24;
 
 import "fhevm/lib/TFHE.sol";
-import "fhevm/config/ZamaFHEVMConfig.sol";
-import "fhevm/config/ZamaGatewayConfig.sol";
-import "fhevm/gateway/GatewayCaller.sol";
+import { SepoliaZamaFHEVMConfig } from "fhevm/config/ZamaFHEVMConfig.sol";
 
-/// @title EncryptedCounter3
-/// @notice A contract that maintains an encrypted counter and is meant for demonstrating how decryption works
-/// @dev Uses TFHE library for fully homomorphic encryption operations and Gateway for decryption
-/// @custom:experimental This contract is experimental and uses FHE technology with decryption capabilities
-contract EncryptedCounter3 is SepoliaZamaFHEVMConfig, SepoliaZamaGatewayConfig, GatewayCaller {
-    /// @dev Decrypted state variable
-    euint8 internal counter;
-    uint8 public decryptedCounter;
-
-    constructor() {
-        //Gateway.setGateway(Gateway.defaultGatewayAddress()); Commented out due to errors?
-
-        // Initialize counter with an encrypted zero value
-        counter = TFHE.asEuint8(0);
-        TFHE.allowThis(counter);
-    }
+/// @title EncryptedCounter4
+/// @notice A contract that maintains encrypted counters for each user and is meant for demonstrating how re-encryption works
+/// @dev Uses TFHE library for fully homomorphic encryption operations
+/// @custom:security Each user can only access and modify their own counter
+/// @custom:experimental This contract is experimental and uses FHE technology
+contract EncryptedCounter4 is SepoliaZamaFHEVMConfig {
+    // Mapping from user address to their encrypted counter value
+    mapping(address => euint8) private counters;
 
     function incrementBy(einput amount, bytes calldata inputProof) public {
-        // Convert input to euint8 and add to counter
+        // Initialize counter if it doesn't exist
+        if (!TFHE.isInitialized(counters[msg.sender])) {
+            counters[msg.sender] = TFHE.asEuint8(0);
+        }
+
+        // Convert input to euint8 and add to sender's counter
         euint8 incrementAmount = TFHE.asEuint8(amount, inputProof);
-        counter = TFHE.add(counter, incrementAmount);
-        TFHE.allowThis(counter);
+        counters[msg.sender] = TFHE.add(counters[msg.sender], incrementAmount);
+        TFHE.allowThis(counters[msg.sender]);
+        TFHE.allow(counters[msg.sender], msg.sender);
     }
 
-    /// @notice Request decryption of the counter value
-    function requestDecryptCounter() public {
-        uint256[] memory cts = new uint256[](1);
-        cts[0] = Gateway.toUint256(counter);
-        Gateway.requestDecryption(cts, this.callbackCounter.selector, 0, block.timestamp + 100, false);
-    }
-
-    /// @notice Callback function for counter decryption
-    /// @param decryptedInput The decrypted counter value
-    /// @return The decrypted value
-    function callbackCounter(uint256, uint8 decryptedInput) public onlyGateway returns (uint8) {
-        decryptedCounter = decryptedInput;
-        return decryptedInput;
-    }
-
-    /// @notice Get the decrypted counter value
-    /// @return The decrypted counter value
-    function getDecryptedCounter() public view returns (uint8) {
-        return decryptedCounter;
+    function getCounter() public view returns (euint8) {
+        // Return the encrypted counter value for the sender
+        return counters[msg.sender];
     }
 }
